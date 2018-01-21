@@ -5,9 +5,13 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
+import ksJedis.jedisConf;
 import ksUtil.SerializationUtil;
 import redis.clients.jedis.Jedis; 
-
+//error note:
+//	-1:input error
+//	-2:da connection error
+//	-3:redis connection error
 
 public class keyStore {
 
@@ -25,15 +29,20 @@ public class keyStore {
 	
 	
 	//class
-	class listObj implements Serializable{
-		private static final long serialVersionUID=0;
-		public List list=null;
-	}
+
 	//func
 //constructor
-	keyStore(String tabName,char mode){
+	keyStore(String tabName,char mode,jedisConf jdsconf){
 		this.ks_tableNmae=tabName;
-
+		if(jdsconf.ip==null){
+			System.out.print("void ip for redis\n");
+		}
+		if(jdsconf.port==0){
+			System.out.print("unsafe port for redis\n");
+		}
+		this.IP=jdsconf.ip;
+		this.Port=jdsconf.port;
+		this.password=jdsconf.password;
 		switch (mode){
 			case 'r':read_constructor();
 						break;
@@ -60,7 +69,7 @@ public class keyStore {
 	//input:secColID:	the index of the cols
 	//		encMode:	the encryption mode of the cols
 	//return 0 success
-	//return -1 failed
+	//return -1/-2/-3 failed
 	public int genKey(String[] secColName,int[] encMode){
 		try{
 			
@@ -73,7 +82,24 @@ public class keyStore {
 	
 	public int genKey(int[] secColId,int[] encMode){
 		try{
+			//send to machine
+			/*da_handle dh;
+			if(!DA_OpenHsmServer(dh,ip,port)){
+				return -2;
+			}
+			Map<String, String> tmp_map=new HashMap<String, String>();
 			
+			for(int i=0;i<secClId.length;i++){
+				List<byte[]> tmp_list=new ArrayList<byte[]>();
+				byte[] tmp_bytes=DA_QinGenCipherKey(dh,encMode[i]);
+				tmp_list.add(tmp_bytes);
+				map1.put(secColId[i].toString(),
+					SerializationUtil.su_BytestoString(SerializationUtil.serialize(tmp_list)));
+			}
+			ks_dbConnent();
+			ks_dbWrite(map1);
+			ks_dbDisconnect();
+			*/
 		}catch(Exception e){
 			return -1;
 		}
@@ -90,7 +116,7 @@ public class keyStore {
 	//return:	the key list
 	public List<byte[]> getKeys(int index){
 		ks_dbConnent();
-		ks_dbRead(index);
+		this.result_list=ks_dbRead(index);
 		ks_dbDisconnect();
 		return this.result_list;
 	}
@@ -115,6 +141,15 @@ public class keyStore {
 	}
 	
 	//database operations
+	public boolean ks_dbSelect(int i){
+		try{
+			this.ksJedis.select(i);
+			return true;
+		}catch (Exception e){
+			e.printStackTrace();
+			return false;
+		}
+	}
 	private boolean ks_dbConnent(){
 		try{
 			this.ksJedis=new Jedis(this.IP,this.Port);
@@ -137,26 +172,27 @@ public class keyStore {
 	}
 	
 	@SuppressWarnings("unchecked")
-	private boolean ks_dbRead(int index){
+	private List<byte[]> ks_dbRead(int index){
+		String tmp=null;
 		if(!checkMode('r')){
 			System.out.println("permission denied!\n"
 					+ "read redis failed:"
 					+ "mode error");
-			return false;
+			return null;
 		}
 		
 		try{
-			String tmp=this.ksJedis.hmget(this.ks_tableNmae,String.valueOf(index)).get(0);
+			tmp=this.ksJedis.hmget(this.ks_tableNmae,String.valueOf(index)).get(0);
 			if(tmp.length()==0){
 				System.out.println("read empty password list,but still returned!");
-				return true;
+				return null;
 			}
-			this.result_list=(List<byte[]>) SerializationUtil.deserialize(SerializationUtil.su_StringtoBytes(tmp));
+			//this.result_list=(List<byte[]>) SerializationUtil.deserialize(SerializationUtil.su_StringtoBytes(tmp));
 		}catch(Exception e){
 			System.out.println("read redis failed!");
 			e.printStackTrace();			
 		}
-		return true;
+		return (List<byte[]>) SerializationUtil.deserialize(SerializationUtil.su_StringtoBytes(tmp));
 	}
 
 	private boolean ks_dbWrite(Map<String,String> hashmap){
@@ -195,9 +231,6 @@ public class keyStore {
 		ks_dbDisconnect();
 	}
 	void test2(int x){
-
-		
-		
 		System.out.print("\n");
 		ks_dbConnent();
 		ks_dbRead(x);
@@ -215,3 +248,5 @@ public class keyStore {
 		}
 	}
 }
+
+

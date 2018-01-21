@@ -4,10 +4,15 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+import ksJedis.jedisConf;
+
+
+
 
 public class run_test_main {
 	public static void main(String args[]){
-		keyStore ks = new keyStore("tab21",'r');
+		jedisConf jconf=new jedisConf("127.0.0.1",6379,"bob");
+		keyStore ks = new keyStore("tab21",'r',jconf);
 		//ks.pingTest();
 		//System.out.print(ks.ks_tableNmae);
 		//showMap(ks.getKeyMap());
