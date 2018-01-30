@@ -4,7 +4,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+import keyStore.keyStore;
 import ksJedis.jedisConf;
+
 
 
 
@@ -16,7 +18,7 @@ public class run_test_main {
 		//ks.pingTest();
 		//System.out.print(ks.ks_tableNmae);
 		//showMap(ks.getKeyMap());
-		List<byte[]> tmp = ks.getKeys(2);
+		List<byte[]> tmp = ks.getKeys(0);
 		for(int i=0;i<tmp.size();i++){
 			for(int j=0;j<tmp.get(i).length;j++){
 				System.out.print(tmp.get(i)[j]+" ");
