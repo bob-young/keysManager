@@ -1,4 +1,5 @@
 package keyStore;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -7,6 +8,7 @@ import java.util.Map;
 import ksJedis.jedisConf;
 import ksUtil.SerializationUtil;
 import redis.clients.jedis.Jedis; 
+
 import com.datech.DaToSHCA.*;
 //error note:
 //	-1:input error
@@ -16,24 +18,25 @@ import com.datech.DaToSHCA.*;
 public class keyStore {
 
 	//var
-	public String ks_tableNmae;
+	public String ks_tableName;
 	private char mode='r';
 	//db config
 	private Jedis ksJedis=null;
 	private String IP="127.0.0.1";
 	private int Port=6379;
 	private String password="bob";
-	private int dbId=1;
+	private int dbId=0;
 	private Map<String, List<byte[]>> ks_map=null;
 	private List<byte[]> result_list=null;
-	
+	private LinkedList<byte[]> key_list=null;
+	final static int TOTAL_KEYS=7;
 	
 	//class
 
 	//func
 //constructor
 	public keyStore(String tabName,char mode,jedisConf jdsconf){
-		this.ks_tableNmae=tabName;
+		this.ks_tableName=tabName;
 		if(jdsconf.ip==null){
 			System.out.print("void ip for redis\n");
 		}
@@ -66,20 +69,42 @@ public class keyStore {
 		return 0;
 	}
 	
+	//input:int mode:	the encrypt mode for this table
+	//return:the key for this mode
+	public byte[] genKey(int mode){
+		da_handle dh = new da_handle();
+		DaToSHCA dats=new DaToSHCA();
+		byte[] tmp_bytes=dats.DA_QinGenCipherKey(dh,mode);
+		//sync this table 
+		List<byte[]> a=this.getAllKeys();
+		//add key for this mode in to keys`table
+		if(a.get(mode-1)==new byte[1]){
+			System.out.println("add a new key for mode :"+mode);
+		}else{
+			System.out.println("change the key for mode	:"+mode);
+		}
+		a.set(mode-1, tmp_bytes);
+		//sync
+		Map<String, String> tmp_map=new HashMap<String, String>();
+		
+		for(int i=0;i<TOTAL_KEYS;i++){
+			List<byte[]> tmp_list=new ArrayList<byte[]>();;
+			byte[] i_bytes=a.get(i);
+			tmp_list.add(i_bytes);
+			tmp_map.put(String.valueOf(i),
+			SerializationUtil.su_BytestoString(SerializationUtil.serialize(tmp_list)));
+		}
+		ks_dbConnect();
+		ks_dbWrite(tmp_map);
+		ks_dbDisconnect();
+		
+		return tmp_bytes;
+	}
 	//input:secColID:	the index of the cols
 	//		encMode:	the encryption mode of the cols
 	//return 0 success
 	//return -1/-2/-3 failed
-	public int genKey(String[] secColName,int[] encMode){
-		try{
-			
-		}catch(Exception e){
-			return -1;
-		}
-		
-		return 0;
-	}
-	
+
 	public int genKey(int[] secColId,int[] encMode){
 		try{
 			//send to machine
@@ -98,9 +123,9 @@ public class keyStore {
 					System.out.print(" "+tmp_bytes[ii]);
 				tmp_list.add(tmp_bytes);
 				tmp_map.put(String.valueOf(secColId[i]),
-					SerializationUtil.su_BytestoString(SerializationUtil.serialize(tmp_list)));
+				SerializationUtil.su_BytestoString(SerializationUtil.serialize(tmp_list)));
 			}
-			ks_dbConnent();
+			ks_dbConnect();
 			ks_dbWrite(tmp_map);
 			ks_dbDisconnect();
 			
@@ -117,10 +142,38 @@ public class keyStore {
 		return ks_map;
 	}
 	
+	//input :mode number
+	//return :the key for the mode (0 means no key)
+	public byte[] getKeysForMode(int mode){
+		if(mode<1 && mode>TOTAL_KEYS){
+			System.out.println("recieve wrong mode number!");
+			return null;
+		}else{
+			return this.getAllKeys().get(mode-1);
+		}
+		
+	}
+	//return :all the 7 keys in list 
+	//if no key for this mode ,gives 0
+
+	public List<byte[]> getAllKeys(){
+		this.key_list=new LinkedList();
+		ks_dbConnect();
+		for(int i=0;i<TOTAL_KEYS;i++){
+			List<byte[]> tmp=ks_dbRead(i);
+			if(tmp==null){
+				this.key_list.push(new byte[1]);
+			}else{
+				this.key_list.push(tmp.get(0));
+			}
+		}
+		ks_dbDisconnect();
+		return this.key_list;
+	}
 	//input:	index:the index of the col
 	//return:	the key list
 	public List<byte[]> getKeys(int index){
-		ks_dbConnent();
+		ks_dbConnect();
 		this.result_list=ks_dbRead(index);
 		ks_dbDisconnect();
 		return this.result_list;
@@ -155,7 +208,7 @@ public class keyStore {
 			return false;
 		}
 	}
-	private boolean ks_dbConnent(){
+	private boolean ks_dbConnect(){
 		try{
 			this.ksJedis=new Jedis(this.IP,this.Port);
 			this.ksJedis.auth(this.password);
@@ -187,7 +240,7 @@ public class keyStore {
 		}
 		
 		try{
-			tmp=this.ksJedis.hmget(this.ks_tableNmae,String.valueOf(index)).get(0);
+			tmp=this.ksJedis.hmget(this.ks_tableName,String.valueOf(index)).get(0);
 			if(null==tmp||tmp.length()==0){
 				System.out.println("read empty password list,but still returned!");
 				return null;
@@ -210,7 +263,7 @@ public class keyStore {
 			
 		
 		try{
-		String status=this.ksJedis.hmset(this.ks_tableNmae,hashmap);
+		String status=this.ksJedis.hmset(this.ks_tableName,hashmap);
 		}catch(Exception e){
 			System.out.println("write redis failed!");
 			e.printStackTrace();
@@ -231,13 +284,13 @@ public class keyStore {
 		map1.put("1","");
 		list1.add(b3);
 		map1.put("2",SerializationUtil.su_BytestoString(SerializationUtil.serialize(list1)));
-		ks_dbConnent();
+		ks_dbConnect();
 		ks_dbWrite(map1);
 		ks_dbDisconnect();
 	}
 	public void test2(int x){
 		System.out.print("\n");
-		ks_dbConnent();
+		ks_dbConnect();
 		ks_dbRead(x);
 		ks_dbDisconnect();
 		if(this.result_list==null){
