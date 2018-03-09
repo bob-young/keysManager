@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 import ksJedis.jedisConf;
 import ksUtil.SerializationUtil;
@@ -46,6 +47,8 @@ public class keyStore {
 		this.IP=jdsconf.ip;
 		this.Port=jdsconf.port;
 		this.password=jdsconf.password;
+		this.dbId=jdsconf.db_num;
+		
 		switch (mode){
 			case 'r':read_constructor();
 						break;
@@ -68,7 +71,99 @@ public class keyStore {
 		}
 		return 0;
 	}
+	//fast mode for database level tablename=dbname
+	//generate a key for mode
+	public int genKeyFast(int mode){
+		da_handle dh = new da_handle();
+		DaToSHCA dats=new DaToSHCA();
+		if(!dats.DA_OpenHsmServer(dh,"192.168.0.178",6006)){
+			return -2;
+		}
+		byte[] tmp_bytes=dats.DA_QinGenCipherKey(dh,mode);
+		for(int i=0;i<tmp_bytes.length;i++){
+			System.out.printf("0x%02x",tmp_bytes[i]);
+		}
+		System.out.println("");
+		try{
+			this.ks_dbConnect();
+			this.ksJedis.set(this.ks_tableName+"-"+mode,SerializationUtil.su_BytestoString(tmp_bytes));
+			this.ks_dbDisconnect();
+		}catch(Exception e){
+			System.out.println("write redis failed!");
+			e.printStackTrace();
+		}
+		return 0;
+	}
+	//generate 8 keys for a name
+	public int genKeyFastAll(){
+		da_handle dh = new da_handle();
+		DaToSHCA dats=new DaToSHCA();
+		if(!dats.DA_OpenHsmServer(dh,"192.168.0.178",6006)){
+			return -2;
+		}
+		
+		this.ks_dbConnect();
+		for(int j=0;j<8;j++){
+			
+			byte[] tmp_bytes=dats.DA_QinGenCipherKey(dh,j+1);
+			for(int i=0;i<tmp_bytes.length;i++){
+				System.out.printf("0x%02x",tmp_bytes[i]);
+			}
+			System.out.println("");
+			try{
+				
+				this.ksJedis.set(this.ks_tableName+"-"+(j+1),SerializationUtil.su_BytestoString(tmp_bytes));
+				
+			}catch(Exception e){
+				System.out.println("write redis failed!");
+				this.ks_dbDisconnect();
+				e.printStackTrace();
+			}
+			this.ks_dbDisconnect();
+		}
+		return 0;
+	}
 	
+	public List<byte[]> getKeyFast(){
+		List<byte[]> ret_byte=new ArrayList<byte[]>();
+		this.ks_dbConnect();
+		for(int i =0;i<8;i++){
+			String tmp=this.ksJedis.get(this.ks_tableName+"-"+(i+1));
+			ret_byte.add(SerializationUtil.su_StringtoBytes(tmp));
+		}
+		this.ks_dbDisconnect();
+		return ret_byte;
+	}
+	
+/*
+	public List<byte[]> getKeyFast(){
+		this.ks_dbConnect();
+		Set<String> keySet=this.ksJedis.keys(this.ks_tableName+"-*");
+
+		String[] atmp=new String[keySet.size()];
+		int i=0;
+		for(String value: keySet){
+            atmp[i]=value;
+            i++;
+        }
+		
+		List<String> tmp=this.ksJedis.mget(atmp);
+		this.ks_dbDisconnect();
+		if(null==tmp||tmp.size()==0){
+			System.out.println("read empty password list,but still returned!");
+			return null;
+		}
+		
+		List<byte[]> ret_byte=new ArrayList<byte[]>();
+		for(i=0;i<tmp.size();i++){
+			//System.out.println(tmp.get(i));
+			ret_byte.add(SerializationUtil.su_StringtoBytes(tmp.get(i)));
+		}
+		
+		return ret_byte;
+	}
+	*/
+	//---------table level------------------
 	//input:int mode:	the encrypt mode for this table
 	//return:the key for this mode
 	public byte[] genKey(int mode){
@@ -100,6 +195,8 @@ public class keyStore {
 		
 		return tmp_bytes;
 	}
+	
+	//----------------col level-----------
 	//input:secColID:	the index of the cols
 	//		encMode:	the encryption mode of the cols
 	//return 0 success
