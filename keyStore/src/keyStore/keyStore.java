@@ -1,4 +1,6 @@
 package keyStore;
+
+
 import java.util.LinkedList;
 import java.util.List;
 import java.util.ArrayList;
@@ -8,16 +10,18 @@ import java.util.Set;
 
 import ksJedis.jedisConf;
 import ksUtil.SerializationUtil;
-import redis.clients.jedis.Jedis; 
+import redis.clients.jedis.Jedis;
 
 import com.datech.DaToSHCA.*;
+
+import daHsm.daHsmConf;
 //error note:
 //	-1:input error
 //	-2:da connection error
 //	-3:redis connection error
 
 public class keyStore {
-
+	static daHsmConf dhConf=new daHsmConf();
 	//var
 	public String ks_tableName;
 	private char mode='r';
@@ -25,12 +29,12 @@ public class keyStore {
 	private Jedis ksJedis=null;
 	private String IP="127.0.0.1";
 	private int Port=6379;
-	private String password="bob";
+	private String password="";
 	private int dbId=0;
 	private Map<String, List<byte[]>> ks_map=null;
 	private List<byte[]> result_list=null;
 	private LinkedList<byte[]> key_list=null;
-	final static int TOTAL_KEYS=7;
+	final static int TOTAL_KEYS=8;
 	
 	//class
 
@@ -71,14 +75,21 @@ public class keyStore {
 		}
 		return 0;
 	}
+	//-------------------------------------------------------------------------------db level --------------------------------------------------------------------
+	// in this level we generate 8keys for a dbname
+	//usage:
+	//				genKeyFastAll() generate 8 key for this.tablename
+	//				getKeyFast() return List<byte[]>(8) namely 8 keys under this.tablename
 	//fast mode for database level tablename=dbname
-	//generate a key for mode
+	//generate a key for a single mode
 	public int genKeyFast(int mode){
 		da_handle dh = new da_handle();
 		DaToSHCA dats=new DaToSHCA();
-		if(!dats.DA_OpenHsmServer(dh,"192.168.0.178",6006)){
+		if(!dats.DA_OpenHsmServer(dh,dhConf.ip,dhConf.port)){
+			System.out.println("de an connect error");
 			return -2;
 		}
+		System.out.println("de an connected");
 		byte[] tmp_bytes=dats.DA_QinGenCipherKey(dh,mode);
 		for(int i=0;i<tmp_bytes.length;i++){
 			System.out.printf("0x%02x",tmp_bytes[i]);
@@ -98,14 +109,17 @@ public class keyStore {
 	public int genKeyFastAll(){
 		da_handle dh = new da_handle();
 		DaToSHCA dats=new DaToSHCA();
-		if(!dats.DA_OpenHsmServer(dh,"192.168.0.178",6006)){
+		if(!dats.DA_OpenHsmServer(dh,dhConf.ip,dhConf.port)){
 			return -2;
 		}
-		
+		System.out.println("de an connected");
 		this.ks_dbConnect();
-		for(int j=0;j<8;j++){
+		for(int j=0;j<TOTAL_KEYS;j++){
 			
 			byte[] tmp_bytes=dats.DA_QinGenCipherKey(dh,j+1);
+			if(tmp_bytes==null){
+				System.out.println("recieve null from da");
+			}
 			for(int i=0;i<tmp_bytes.length;i++){
 				System.out.printf("0x%02x",tmp_bytes[i]);
 			}
@@ -119,22 +133,23 @@ public class keyStore {
 				this.ks_dbDisconnect();
 				e.printStackTrace();
 			}
-			this.ks_dbDisconnect();
+			
 		}
+		this.ks_dbDisconnect();
 		return 0;
 	}
 	
 	public List<byte[]> getKeyFast(){
 		List<byte[]> ret_byte=new ArrayList<byte[]>();
 		this.ks_dbConnect();
-		for(int i =0;i<8;i++){
+		for(int i =0;i<TOTAL_KEYS;i++){
 			String tmp=this.ksJedis.get(this.ks_tableName+"-"+(i+1));
 			ret_byte.add(SerializationUtil.su_StringtoBytes(tmp));
 		}
 		this.ks_dbDisconnect();
 		return ret_byte;
 	}
-	
+	//-------------------------------------------------------------------------------db level end --------------------------------------------------------------------
 /*
 	public List<byte[]> getKeyFast(){
 		this.ks_dbConnect();
@@ -163,7 +178,11 @@ public class keyStore {
 		return ret_byte;
 	}
 	*/
-	//---------table level------------------
+	//-------------------------------------------------------------------------------table level --------------------------------------------------------------------
+	//
+	//usage:
+	//				genKey(int mode) :generate a key in mode for this.tablename,if the mode is unused fill 0
+	//
 	//input:int mode:	the encrypt mode for this table
 	//return:the key for this mode
 	public byte[] genKey(int mode){
@@ -196,7 +215,11 @@ public class keyStore {
 		return tmp_bytes;
 	}
 	
-	//----------------col level-----------
+	//--------------------------------------------------------------------------------col level-------------------------------------------------------------------
+	//usage:
+	//				 genKey(int[] secColId,int[] encMode):secColId:cols that need to be encrypted
+	//																							encMode:encryption mode for the  cols
+	//				getKeys(int col):get the keys for col:return list of keys for the col
 	//input:secColID:	the index of the cols
 	//		encMode:	the encryption mode of the cols
 	//return 0 success
@@ -207,7 +230,7 @@ public class keyStore {
 			//send to machine
 			da_handle dh = new da_handle();
 			DaToSHCA dats=new DaToSHCA();
-			if(!dats.DA_OpenHsmServer(dh,"192.168.0.178",6006)){
+			if(!dats.DA_OpenHsmServer(dh,dhConf.ip,dhConf.port)){
 				return -2;
 			}
 			Map<String, String> tmp_map=new HashMap<String, String>();
@@ -250,9 +273,9 @@ public class keyStore {
 		}
 		
 	}
-	//return :all the 7 keys in list 
+	
+	//return :all the 8 keys in list 
 	//if no key for this mode ,gives 0
-
 	public List<byte[]> getAllKeys(){
 		this.key_list=new LinkedList();
 		ks_dbConnect();
@@ -312,6 +335,7 @@ public class keyStore {
 		}catch(Exception e){
 			return false;
 		}
+		System.out.println(" connect successfully!");
 		return true;
 	}
 	
@@ -369,39 +393,8 @@ public class keyStore {
 	}
 	
 	//test-----------test part----------
-	public void test1(){
-		Map<String, String> map1=new HashMap<String, String>();
-		List<byte[]> list1=new ArrayList<byte[]>();
-		byte[] b1={1,2,3,4,5,6,7,8};
-		byte[] b2={25,-128,127,0,0,1,1,1};
-		byte[] b3={2,-1,11,1,1,1,1,1};
-		list1.add(b1);
-		list1.add(b2);
-		map1.put("0",SerializationUtil.su_BytestoString(SerializationUtil.serialize(list1)));
-		map1.put("1","");
-		list1.add(b3);
-		map1.put("2",SerializationUtil.su_BytestoString(SerializationUtil.serialize(list1)));
-		ks_dbConnect();
-		ks_dbWrite(map1);
-		ks_dbDisconnect();
-	}
-	public void test2(int x){
-		System.out.print("\n");
-		ks_dbConnect();
-		ks_dbRead(x);
-		ks_dbDisconnect();
-		if(this.result_list==null){
-			System.out.println("null result");
-			return;
-		}
-
-		for(int i=0;i<this.result_list.size();i++){
-			for(int j=0;j<this.result_list.get(i).length;j++){
-				System.out.print(this.result_list.get(i)[j]+" ");
-			}
-			System.out.print("\n");
-		}
-	}
+	public void test1(){}
+	public void test2(int x){}
 }
 
 
