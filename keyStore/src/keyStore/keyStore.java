@@ -20,6 +20,9 @@ import daHsm.daHsmConf;
 //	-2:da connection error
 //	-3:redis connection error
 
+
+// add util for null pointer check
+//
 public class keyStore {
 	static daHsmConf dhConf=new daHsmConf();
 	//var
@@ -42,6 +45,8 @@ public class keyStore {
 //constructor
 	public keyStore(String tabName,char mode,jedisConf jdsconf){
 		this.ks_tableName=tabName;
+		
+
 		if(jdsconf.ip==null){
 			System.out.print("void ip for redis\n");
 		}
