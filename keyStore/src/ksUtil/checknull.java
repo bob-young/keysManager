@@ -8,6 +8,7 @@ public class checknull {
 			else
 				return true;
 		}
+		System.out.println("input null pointer");
 		return false;
 	}
 }

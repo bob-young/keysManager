@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Set;
 
 import ksJedis.jedisConf;
-import ksUtil.SerializationUtil;
+import ksUtil.*;
 import redis.clients.jedis.Jedis;
 
 import com.datech.DaToSHCA.*;
@@ -20,9 +20,6 @@ import daHsm.daHsmConf;
 //	-2:da connection error
 //	-3:redis connection error
 
-
-// add util for null pointer check
-//
 public class keyStore {
 	static daHsmConf dhConf=new daHsmConf();
 	//var
@@ -44,9 +41,9 @@ public class keyStore {
 	//func
 //constructor
 	public keyStore(String tabName,char mode,jedisConf jdsconf){
+		if(checknull.check(new Object[]{(Object)tabName,(Object)jdsconf}))
+			System.out.println("in keyStore");
 		this.ks_tableName=tabName;
-		
-
 		if(jdsconf.ip==null){
 			System.out.print("void ip for redis\n");
 		}
@@ -115,6 +112,7 @@ public class keyStore {
 		da_handle dh = new da_handle();
 		DaToSHCA dats=new DaToSHCA();
 		if(!dats.DA_OpenHsmServer(dh,dhConf.ip,dhConf.port)){
+			System.out.println("can not connect to da server");
 			return -2;
 		}
 		System.out.println("de an connected");
@@ -130,7 +128,7 @@ public class keyStore {
 			}
 			System.out.println("");
 			try{
-				
+				//existed(this.ks_tableName);//if this key is already in redis
 				this.ksJedis.set(this.ks_tableName+"-"+(j+1),SerializationUtil.su_BytestoString(tmp_bytes));
 				
 			}catch(Exception e){
@@ -141,6 +139,7 @@ public class keyStore {
 			
 		}
 		this.ks_dbDisconnect();
+		System.out.println("generate new key in da");
 		return 0;
 	}
 	
@@ -149,6 +148,9 @@ public class keyStore {
 		this.ks_dbConnect();
 		for(int i =0;i<TOTAL_KEYS;i++){
 			String tmp=this.ksJedis.get(this.ks_tableName+"-"+(i+1));
+			if(tmp==null){
+				System.out.println("read null from redis!");
+			}
 			ret_byte.add(SerializationUtil.su_StringtoBytes(tmp));
 		}
 		this.ks_dbDisconnect();
